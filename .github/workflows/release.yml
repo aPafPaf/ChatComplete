@@ -1,0 +1,57 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "chatcomplete-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag matches mod.json
+        shell: pwsh
+        run: |
+          $version = (Get-Content mods/chatcomplete/mod.json -Raw | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -ne "chatcomplete-v$version") {
+            throw "tag $env:GITHUB_REF_NAME does not match mod.json version $version"
+          }
+
+      - name: Check the index
+        shell: pwsh
+        run: ./tools/build-index.ps1 -Check
+
+      - name: Configure
+        run: cmake -S native -B native/build -G "Visual Studio 17 2022" -A x64
+
+      - name: Build the DLL
+        run: cmake --build native/build --config Release --target nativesuggest
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $version = (Get-Content mods/chatcomplete/mod.json -Raw | ConvertFrom-Json).version
+          $zip = "chatcomplete-$version.zip"
+          New-Item -ItemType Directory -Force out/chatcomplete | Out-Null
+          Copy-Item mods/chatcomplete/* out/chatcomplete -Recurse
+          New-Item -ItemType Directory -Force out/chatcomplete/bin | Out-Null
+          Copy-Item native/build/Release/NativeSuggest.dll out/chatcomplete/bin
+          Compress-Archive -Path out/chatcomplete/* -DestinationPath $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  $zip" | Set-Content "$zip.sha256" -Encoding ascii
+          Get-ChildItem out/chatcomplete | Select-Object Name, Length
+
+      - name: Draft the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            chatcomplete-*.zip
+            chatcomplete-*.zip.sha256
+          draft: true
+          prerelease: false
+          generate_release_notes: true

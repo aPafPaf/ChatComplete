@@ -1,0 +1,11 @@
+{
+  "id": "chatcomplete",
+  "name": "ChatComplete",
+  "description": "Native command and argument suggestions in the LocalExile client's chat.",
+  "author": "Amnyam",
+  "version": "0.2.0",
+  "compatibleClientVersions": ["0.5.2-beta"],
+  "kind": "feature",
+  "depends": ["Game"],
+  "enabled": false
+}

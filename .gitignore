@@ -1,0 +1,45 @@
+# Build output
+native/build/
+.vs/
+CMakeCache.txt
+CMakeFiles/
+*.dll
+*.exe
+*.pdb
+*.lib
+*.obj
+*.ilk
+*.exp
+
+# Release output
+out/
+*.zip
+*.sha256
+
+# Python
+__pycache__/
+*.pyc
+
+# Local evidence / generated screenshots and dumps
+shot*.png
+*.hex
+*.log
+
+# One-off research scripts (kept on disk, not part of the distributed tool)
+auto_native*.py
+test_*.py
+*_diff*.py
+disasm_ret.py
+final_test.py
+find_handler.py
+item_diff.js
+live_suggest.py
+native_item_test.py
+scan_text.py
+trace_char.py
+type_char.py
+watch_text.py
+
+# Editors / temp
+~$*
+*.tmp

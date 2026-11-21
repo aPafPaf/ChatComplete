@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "settings": {
+    "dllPath": {
+      "type": "text",
+      "default": "",
+      "label": "NativeSuggest.dll",
+      "description": "Empty: bin/NativeSuggest.dll in this mod's folder. Set a path only to load a DLL from elsewhere."
+    },
+    "processName": {
+      "type": "text",
+      "default": "Game.patched",
+      "label": "Process name",
+      "description": "Process to inject into (without .exe)."
+    },
+    "intervalMs": {
+      "type": "integer",
+      "default": 1500,
+      "min": 250,
+      "max": 10000,
+      "unit": "ms",
+      "label": "Watcher interval"
+    },
+    "autoInject": {
+      "type": "bool",
+      "default": true,
+      "label": "Inject automatically"
+    }
+  }
+}
