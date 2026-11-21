@@ -11,6 +11,30 @@ every local client, writes the catalogs from the live command table and
 `CompletionValues`, and exposes `/ccc`. The DLL also notices changed catalog files and
 reloads on the next keystroke, so `/cc reload` is only a fallback.
 
+Argument coverage now has two layers: value catalogs (`@area`, `@monster`, ...) and a
+grammar parsed from each command's `usage` (`ChatComplete.states.txt`). The grammar
+gives subcommands, enums and flags by position; it stops at free text and large numeric
+ranges. Catalogs search their `detail` column too: areas show `Name (Id)` and match a
+typed name, and small numeric sets/ranges become number suggestions. The Gateway now
+also provides the framework kinds `mod` and `module` (`Program.CompletionValues`), so
+`/mod_enable` and `/module_reload` complete real ids; the mod reads them by reflection
+and falls back on older Gateways. A `CommandGrammar` can declare a command's forms
+(keywords, choices, catalogs, numbers); the mod prefers declarations over parsing usage,
+but this is optional and the release works on the stock Gateway. Ascendancy names are generated
+mod-side from `client.db` (`Ascendancy.Name` for normal, `Ascendancy.LeagueName` for
+phrecia, filtered by `conn.ClassRow`), so no server change is needed. `tools/coverage.py`
+turns the audit into a report: it lists commands with no suggestions, likely gaps whose
+data is already in `client.db`, partial coverage and broken kind files. Acting on it
+added passive nodes (graph ids), Atlas maps, quest presets, tattoos, unique jewels,
+item-domain mods, standard stash tab names, cluster themes by size, monster affixes,
+and installed mods/modules. States can now start with `@kind` (an exact catalog value)
+or `*` (a runtime word), so arguments after a value continue: `/spawn_mob Sand Spitter `
+offers `friendly` and the rarities, `/tattoo_apply <name> ` the passive nodes,
+`/mob_mods 0x1 ` the affixes, `/hit fire 100 ` the flags, and
+`/cluster_jewel large 8 2 ` / `/item Mageblood 1 ` the next finite arguments. The audit
+is at 0 gaps and `--strict` passes; the custom name after `/spawn_mob ... rare` is free
+text by design.
+
 ## Timeline
 
 1. **Frida probe** (`probe.js`, `probe.py`): captured the ChatBox from the key handler,

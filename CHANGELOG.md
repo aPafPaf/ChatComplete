@@ -5,6 +5,45 @@ All dates are 2026-11-21 unless noted. Client build: 3.29.3c.
 ## NativeSuggest — current
 
 ### Added
+- Contextual argument suggestions from each command's usage string: subcommands,
+  enums and flags, through a small state machine (`ChatComplete.states.txt`).
+  50 commands / 265 states; `/tp` keeps its area catalog, `/kill` shows its keywords
+  before the monster catalog, and `charges`/`item_mod`/`descendancy` have explicit
+  overrides. `ChatComplete.usage.txt` keeps the live usage table for inspection.
+- Catalog detail is searchable: area suggestions show `Name (Id)` and match a typed
+  name (`/goto the twi`), and other kinds search their detail as well as their value.
+- Small numeric sets and ranges (`[created 0|1]`, `[type 1-4]`, `[model 0-2]`) are
+  suggested as numbers.
+- Framework-owned catalogs `mod` and `module`: `/mod_enable`, `/mod_disable` and
+  `/mod_reload` suggest mod ids, `/module_reload` suggests modules. The mod reaches
+  them by reflection and falls back to the game module's `CompletionValues` on a
+  released Gateway that does not have the LocalExile change yet.
+- Optional support for a `CommandGrammar` declared by the Gateway (forms of keywords,
+  choices, catalogs and numbers): the mod prefers it and parses usage when there is
+  none. The stock Gateway has no such declarations, so this release simply falls back
+  to usage; no LocalExile change is required.
+- Ascendancy names by class: `/ascendancy normal ` suggests `Name`, `/ascendancy phrecia `
+  suggests `LeagueName` from `client.db`'s `Ascendancy` table, filtered by `conn.ClassRow`.
+  This is mod-side only; the stock Gateway already has the table.
+- `tools/coverage.py`: audits every command's arguments against the generated states and
+  kind files, and points out likely gaps where `client.db` already has a matching table
+  (`ascendancy`, `passive`, `tattoo`, `mod`, `atlas`, ...). `--strict` fails on broken
+  kind files or likely gaps; `--json` writes the full report.
+- Static catalogs from `client.db`: `/add_passive` (`PassiveSkills.PassiveSkillGraphId` +
+  name), `/atlas_complete` (`AtlasNode.Id` + `WorldAreas` name), `/quest_preset`
+  (`CharacterStartQuestState.Id`), `/tattoo` and `/tattoo_apply` (tattoo item names),
+  `/unique_jewel` (`UniqueJewelCatalogue.Names`), `/item_mod` (item-domain `Mods`),
+  `/item_tab` (standard stash tabs), `/cluster_jewel` (`ClusterJewels.Themes` by size),
+  `/mob_mods` (monster affixes), and `/mod_*`/`/module_reload` (installed mods/modules).
+- Arguments after a catalog value: states can start with `@kind` (an exact catalog value)
+  or `*` (a runtime word). `/spawn_mob Sand Spitter ` now offers `friendly` and the four
+  rarities, `/tattoo_apply <name> ` the passive nodes, `/item Mageblood ` the rarity/`max`
+  flags, and `/mob_mods 0x1 ` the monster affixes. The repeatable audit workflow is in
+  [docs/AUDIT.md](docs/AUDIT.md). Wildcard states (`*`) also cover
+  arguments after numbers: `/hit fire 100 ` -> `ranged`/`freeze`,
+  `/cluster_jewel large 8 2 ` -> the themes, `/item Mageblood 1 ` -> rarity/`max`.
+  The custom name after `/spawn_mob ... rare` is free text by design. The audit is at
+  0 gaps, no deferred list, and `--strict` passes.
 - Local server mod `chatcomplete` (`mods/chatcomplete/`, installed by `install_mod.ps1` into the
   gitignored `LocalExile/Mods/Binaries/`): injects `NativeSuggest.dll` into every local
   `Game.patched.exe` (new PIDs too), writes the catalogs from the live connection

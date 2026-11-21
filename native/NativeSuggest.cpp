@@ -62,6 +62,7 @@ struct ArgEntry {
     std::wstring display;   // shown
     std::wstring valueLower;
     std::wstring displayLower;
+    std::wstring detailLower;  // searched, not inserted
 };
 
 struct Match {
@@ -91,6 +92,12 @@ std::unordered_map<std::wstring, std::vector<ArgEntry>> g_kindCatalogs;
 std::unordered_map<std::wstring, bool> g_kindLoaded;
 std::unordered_map<std::wstring, uint64_t> g_catalogStamps;
 uint64_t g_lastCatalogCheck = 0;
+
+struct GrammarState {
+    std::vector<std::wstring> prefix;
+    std::vector<std::wstring> tokens;
+};
+std::unordered_map<std::wstring, std::vector<GrammarState>> g_grammar;
 
 constexpr size_t kWindowRows = 12;
 constexpr size_t kMaxMatches = 4000;
@@ -408,6 +415,10 @@ std::wstring KindPath(const std::wstring& kind) {
     return TempDir() + L"ChatComplete.kind." + kind + L".txt";
 }
 
+std::wstring GrammarPath() {
+    return TempDir() + L"ChatComplete.states.txt";
+}
+
 // The mod (LocalExile/Mods/Binaries/chatcomplete) rewrites these files: a change
 // means the running client should re-read them without /cc reload.
 uint64_t FileStamp(const std::wstring& path) {
@@ -423,6 +434,7 @@ void RecordCatalogStamps() {
     g_catalogStamps.clear();
     g_catalogStamps[L"commands"] = FileStamp(CommandPath());
     g_catalogStamps[L"args"] = FileStamp(TempDir() + L"ChatComplete.args.txt");
+    g_catalogStamps[L"grammar"] = FileStamp(GrammarPath());
     for (const auto& [kind, loaded] : g_kindLoaded)
         if (loaded) g_catalogStamps[L"kind." + kind] = FileStamp(KindPath(kind));
 }
@@ -434,7 +446,8 @@ bool CatalogStampChanged(const std::wstring& key, const std::wstring& path) {
 
 bool CatalogsChanged() {
     if (CatalogStampChanged(L"commands", CommandPath()) ||
-        CatalogStampChanged(L"args", TempDir() + L"ChatComplete.args.txt"))
+        CatalogStampChanged(L"args", TempDir() + L"ChatComplete.args.txt") ||
+        CatalogStampChanged(L"grammar", GrammarPath()))
         return true;
     for (const auto& [kind, loaded] : g_kindLoaded)
         if (loaded && CatalogStampChanged(L"kind." + kind, KindPath(kind))) return true;
@@ -524,6 +537,59 @@ void LoadCommandKinds() {
     Log(L"command kinds: " + std::to_wstring(g_cmdKinds.size()) + L"\n");
 }
 
+// %TEMP%\ChatComplete.states.txt: "<command>TAB<literal prefix>TAB<a|b|@kind>".
+void LoadGrammarStates() {
+    std::ifstream in(GrammarPath());
+    if (!in) {
+        Log(L"grammar missing\n");
+        return;
+    }
+    size_t states = 0;
+    std::string line;
+    while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty() || line[0] == '#') continue;
+        size_t first = line.find('\t');
+        if (first == std::string::npos) continue;
+        size_t second = line.find('\t', first + 1);
+        if (second == std::string::npos) continue;
+        std::wstring command = ToLowerW(ToWide(line.substr(0, first)));
+        if (command.empty()) continue;
+        GrammarState state;
+        std::wstring prefix = ToWide(line.substr(first + 1, second - first - 1));
+        size_t start = 0;
+        while (start <= prefix.size()) {
+            size_t sp = prefix.find(L' ', start);
+            std::wstring word = prefix.substr(start, sp == std::wstring::npos ? std::wstring::npos : sp - start);
+            if (!word.empty()) state.prefix.push_back(ToLowerW(word));
+            if (sp == std::wstring::npos) break;
+            start = sp + 1;
+        }
+        std::wstring tokens = ToWide(line.substr(second + 1));
+        start = 0;
+        while (start <= tokens.size()) {
+            size_t bar = tokens.find(L'|', start);
+            std::wstring token = tokens.substr(start, bar == std::wstring::npos ? std::wstring::npos : bar - start);
+            if (!token.empty()) state.tokens.push_back(token);
+            if (bar == std::wstring::npos) break;
+            start = bar + 1;
+        }
+        if (!state.tokens.empty()) {
+            // Literal keywords first so they stay visible above a long catalog.
+            std::stable_sort(state.tokens.begin(), state.tokens.end(),
+                [](const std::wstring& a, const std::wstring& b) {
+                    bool aKind = !a.empty() && a[0] == L'@';
+                    bool bKind = !b.empty() && b[0] == L'@';
+                    return !aKind && bKind;
+                });
+            g_grammar[command].push_back(std::move(state));
+            ++states;
+        }
+    }
+    Log(L"grammar states: " + std::to_wstring(g_grammar.size()) + L" commands, " +
+        std::to_wstring(states) + L"\n");
+}
+
 // %TEMP%\ChatComplete.kind.<kind>.txt: "value<TAB>detail" per line.
 void LoadKindCatalog(const std::wstring& kind) {
     if (g_kindLoaded[kind]) return;
@@ -540,30 +606,131 @@ void LoadKindCatalog(const std::wstring& kind) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (line.empty() || line[0] == '#') continue;
         std::string value = line;
+        std::string detail;
         auto tab = line.find('\t');
-        if (tab != std::string::npos) value = line.substr(0, tab);
+        if (tab != std::string::npos) {
+            value = line.substr(0, tab);
+            detail = line.substr(tab + 1);
+        }
         ArgEntry e;
         e.value = ToWide(value);
         if (e.value.empty()) continue;
-        e.displayLower = ToLowerW(StripMetadata(e.value));
-        e.display = DisplayText(e.value);
         e.valueLower = ToLowerW(e.value);
+        std::wstring wdetail = ToWide(detail);
+        if (kind != L"command" && kind != L"mod" && kind != L"module")
+            e.detailLower = ToLowerW(wdetail);
+        bool clusterTheme = kind.rfind(L"cluster_theme", 0) == 0;
+        if ((kind == L"area" || kind == L"passive" || kind == L"atlas" || kind == L"item_mod" ||
+             clusterTheme) && !wdetail.empty()) {
+            // These kinds show "Name (id)"; the id is inserted, and the name is searchable.
+            std::wstring name = wdetail;
+            size_t dot = name.find(L'\u00b7');
+            if (dot != std::wstring::npos) name = name.substr(0, dot);
+            while (!name.empty() && name.back() == L' ') name.pop_back();
+            e.display = DisplayText(name + L" (" + e.value + L")");
+            e.displayLower = ToLowerW(wdetail);
+        } else {
+            e.display = DisplayText(e.value);
+            e.displayLower = ToLowerW(StripMetadata(e.value));
+        }
         list.push_back(std::move(e));
     }
     Log(L"catalog " + kind + L": " + std::to_wstring(list.size()) + L"\n");
     g_catalogStamps[L"kind." + kind] = FileStamp(KindPath(kind));
 }
 
+bool TextMatches(const std::wstring& lower, const std::wstring& qLower, const std::wregex* re, bool wildcard) {
+    if (wildcard) return WildcardMatchCI(lower, qLower);
+    if (re != nullptr) return std::regex_search(lower, *re);
+    if (qLower.empty()) return true;
+    return lower.find(qLower) != std::wstring::npos;
+}
+
 bool ArgMatches(const ArgEntry& e, const std::wstring& qLower, const std::wregex* re, bool wildcard) {
     if (wildcard) {
-        return WildcardMatchCI(e.valueLower, qLower) || WildcardMatchCI(e.displayLower, qLower);
+        return WildcardMatchCI(e.valueLower, qLower) || WildcardMatchCI(e.displayLower, qLower) ||
+               WildcardMatchCI(e.detailLower, qLower);
     }
     if (re != nullptr) {
-        return std::regex_search(e.value, *re) || std::regex_search(StripMetadata(e.value), *re);
+        return std::regex_search(e.value, *re) || std::regex_search(StripMetadata(e.value), *re) ||
+               std::regex_search(e.detailLower, *re);
     }
     if (qLower.empty()) return true;
     return e.valueLower.find(qLower) != std::wstring::npos ||
-           e.displayLower.find(qLower) != std::wstring::npos;
+           e.displayLower.find(qLower) != std::wstring::npos ||
+           e.detailLower.find(qLower) != std::wstring::npos;
+}
+
+// Whether text names one catalog value exactly (the typed words before a post-value
+// state's literal tail). Used by @kind prefixes in states.txt.
+bool KindValueExists(const std::wstring& kind, const std::wstring& text) {
+    if (text.empty()) return false;
+    LoadKindCatalog(kind);
+    auto it = g_kindCatalogs.find(kind);
+    if (it == g_kindCatalogs.end()) return false;
+    std::wstring lower = ToLowerW(text);
+    for (const auto& e : it->second) {
+        if (e.valueLower == lower || e.displayLower == lower || e.detailLower == lower)
+            return true;
+    }
+    return false;
+}
+
+// Literal states compare token by token. A prefix whose first token is @kind matches
+// when the words before its literal tail name that kind's value exactly:
+//   @monster             <- "Sand Spitter"
+//   @monster friendly    <- "Sand Spitter friendly"
+bool StatePrefixMatches(const GrammarState& state,
+                        const std::vector<std::wstring>& prefixLower,
+                        const std::vector<std::wstring>& prefixOriginal) {
+    if (state.prefix.empty()) return prefixLower.empty();
+    if (!state.prefix[0].empty() && state.prefix[0][0] == L'@') {
+        std::wstring kind = state.prefix[0].substr(1);
+        size_t tail = state.prefix.size() - 1;
+        if (prefixLower.size() <= tail) return false;
+        size_t valueCount = prefixLower.size() - tail;
+        std::wstring value;
+        for (size_t i = 0; i < valueCount; ++i) {
+            if (i > 0) value += L' ';
+            value += prefixOriginal[i];
+        }
+        for (size_t i = 0; i < tail; ++i) {
+            const std::wstring& want = state.prefix[1 + i];
+            if (want != L"*" && want != prefixLower[valueCount + i]) return false;
+        }
+        return KindValueExists(kind, value);
+    }
+    if (state.prefix.size() != prefixLower.size()) return false;
+    for (size_t i = 0; i < prefixLower.size(); ++i) {
+        if (state.prefix[i] == L"*") continue;
+        if (state.prefix[i] != prefixLower[i]) return false;
+    }
+    return true;
+}
+
+void AddKindMatches(std::vector<Match>& matches, const std::wstring& kind,
+                    const std::wstring& base, const std::wstring& query) {
+    LoadKindCatalog(kind);
+    auto cit = g_kindCatalogs.find(kind);
+    if (cit == g_kindCatalogs.end()) return;
+    std::wstring qLower = ToLowerW(query);
+    bool wildcard = query.find(L'*') != std::wstring::npos;
+    std::wregex re;
+    std::wregex* rePtr = nullptr;
+    if (!wildcard && HasRegexMeta(query)) {
+        try {
+            re = std::wregex(query, std::regex_constants::ECMAScript | std::regex_constants::icase);
+            rePtr = &re;
+        } catch (...) {
+            rePtr = nullptr;
+        }
+    }
+    for (const auto& e : cit->second) {
+        if (ArgMatches(e, qLower, rePtr, wildcard)) {
+            matches.push_back({base + e.value, e.display});
+            if (matches.size() >= kMaxMatches) break;
+        }
+    }
 }
 
 // BGRA bytes. The client writes its own dark red here when a row is selected.
@@ -582,6 +749,8 @@ void ReloadCatalogs() {
     LoadCommandKinds();
     g_kindCatalogs.clear();
     g_kindLoaded.clear();
+    g_grammar.clear();
+    LoadGrammarStates();
     RecordCatalogStamps();
     Log(L"catalogs reloaded: " + std::to_wstring(g_commands.size()) + L" commands, " +
         std::to_wstring(g_cmdKinds.size()) + L" with args\n");
@@ -800,43 +969,98 @@ void Populate(void* chat) {
                 std::wstring command = ToLowerW(first);
                 commandMode = false;
                 argCommand = command;
-                auto kit = g_cmdKinds.find(command);
-                if (kit != g_cmdKinds.end()) {
-                    const auto& kinds = kit->second;
-                    int argIndex = 0;
-                    std::wstring query;
-                    if (kinds.size() <= 1) {
-                        // One argument: the whole rest, so values may contain spaces.
-                        query = text.substr(text.find(L' ') + 1);
-                    } else {
-                        argIndex = static_cast<int>(tokens.size()) - 2;
-                        query = tokens.back();
+                std::wstring argText = text.find(L' ') == std::wstring::npos ? L"" : text.substr(text.find(L' ') + 1);
+                std::wstring partial = tokens.empty() ? L"" : tokens.back();
+                std::vector<std::wstring> prefixLower;
+                std::vector<std::wstring> prefixOriginal;
+                for (size_t i = 1; i + 1 < tokens.size(); ++i) {
+                    prefixOriginal.push_back(tokens[i]);
+                    prefixLower.push_back(ToLowerW(tokens[i]));
+                }
+                std::wstring qLower = ToLowerW(partial);
+                bool wildcard = partial.find(L'*') != std::wstring::npos;
+                std::wregex re;
+                std::wregex* rePtr = nullptr;
+                if (!wildcard && HasRegexMeta(partial)) {
+                    try {
+                        re = std::wregex(partial, std::regex_constants::ECMAScript | std::regex_constants::icase);
+                        rePtr = &re;
+                    } catch (...) {
+                        rePtr = nullptr;
                     }
-                    if (argIndex >= 0 && static_cast<size_t>(argIndex) < kinds.size()) {
-                        const std::wstring& kind = kinds[static_cast<size_t>(argIndex)];
-                        argKind = kind;
-                        LoadKindCatalog(kind);
-                        auto cit = g_kindCatalogs.find(kind);
-                        if (cit != g_kindCatalogs.end()) {
-                            std::wstring qLower = ToLowerW(query);
-                            bool wildcard = query.find(L'*') != std::wstring::npos;
-                            std::wregex re;
-                            std::wregex* rePtr = nullptr;
-                            if (!wildcard && HasRegexMeta(query)) {
-                                try {
-                                    re = std::wregex(query, std::regex_constants::ECMAScript |
-                                                                std::regex_constants::icase);
-                                    rePtr = &re;
-                                } catch (...) {
-                                    rePtr = nullptr;
+                }
+
+                bool handled = false;
+                const GrammarState* matched = nullptr;
+                auto git = g_grammar.find(command);
+                if (git != g_grammar.end()) {
+                    for (const auto& state : git->second) {
+                        if (!StatePrefixMatches(state, prefixLower, prefixOriginal)) continue;
+                        handled = true;
+                        matched = &state;
+                        std::wstring base = L"/" + command;
+                        for (const auto& p : prefixOriginal) base += L" " + p;
+                        base += L" ";
+                        for (const auto& token : state.tokens) {
+                            if (!token.empty() && token[0] == L'@') {
+                                std::wstring query = argText;
+                                size_t pos = 0;
+                                for (size_t i = 0; i < prefixOriginal.size(); ++i) {
+                                    size_t sp = query.find(L' ', pos);
+                                    if (sp == std::wstring::npos) { pos = query.size(); break; }
+                                    pos = sp + 1;
                                 }
+                                if (!prefixOriginal.empty()) query = query.substr(std::min(pos, query.size()));
+                                AddKindMatches(matches, token.substr(1), base, query);
+                            } else if (TextMatches(ToLowerW(token), qLower, rePtr, wildcard)) {
+                                matches.push_back({base + token, DisplayText(token)});
+                                if (matches.size() >= kMaxMatches) break;
                             }
-                            for (const auto& e : cit->second) {
-                                if (ArgMatches(e, qLower, rePtr, wildcard)) {
-                                    matches.push_back({L"/" + command + L" " + e.value, e.display});
-                                    if (matches.size() >= kMaxMatches) break;
-                                }
-                            }
+                        }
+                        break;
+                    }
+                }
+
+                // A command with a catalog kind but only keyword states (/tp list +
+                // areas): add the catalog values for this argument position too.
+                if (matched != nullptr) {
+                    bool sawKind = false;
+                    for (const auto& token : matched->tokens)
+                        if (!token.empty() && token[0] == L'@') { sawKind = true; break; }
+                    auto kit = g_cmdKinds.find(command);
+                    size_t index = prefixOriginal.size();
+                    if (!sawKind && kit != g_cmdKinds.end() && index < kit->second.size()) {
+                        std::wstring query = argText;
+                        size_t pos = 0;
+                        for (size_t i = 0; i < prefixOriginal.size(); ++i) {
+                            size_t sp = query.find(L' ', pos);
+                            if (sp == std::wstring::npos) { pos = query.size(); break; }
+                            pos = sp + 1;
+                        }
+                        if (!prefixOriginal.empty()) query = query.substr(std::min(pos, query.size()));
+                        std::wstring base = L"/" + command;
+                        for (const auto& p : prefixOriginal) base += L" " + p;
+                        base += L" ";
+                        AddKindMatches(matches, kit->second[index], base, query);
+                    }
+                }
+
+                if (!handled) {
+                    auto kit = g_cmdKinds.find(command);
+                    if (kit != g_cmdKinds.end()) {
+                        const auto& kinds = kit->second;
+                        int argIndex = 0;
+                        std::wstring query;
+                        if (kinds.size() <= 1) {
+                            query = argText;
+                        } else {
+                            argIndex = static_cast<int>(tokens.size()) - 2;
+                            query = tokens.back();
+                        }
+                        if (argIndex >= 0 && static_cast<size_t>(argIndex) < kinds.size()) {
+                            const std::wstring& kind = kinds[static_cast<size_t>(argIndex)];
+                            argKind = kind;
+                            AddKindMatches(matches, kind, L"/" + command + L" ", query);
                         }
                     }
                 }
@@ -1067,6 +1291,7 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID) {
         g_base = reinterpret_cast<uintptr_t>(g_module);
         LoadCommands();
         LoadCommandKinds();
+        LoadGrammarStates();
         RecordCatalogStamps();
         ResolveApi();
         InstallHook(g_api.suggestBuilder, &SuggestHook, &g_suggestTrampoline, 14);

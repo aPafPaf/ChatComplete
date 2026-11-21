@@ -17,6 +17,11 @@ everything), and a query with regex metacharacters is a regular expression. Up/D
 move through the whole list and preview the row in the input; Tab accepts it; Enter
 sends even while the list is open. The list never has empty rows.
 
+After a command, finite choices from its usage are suggested too: subcommands
+(`/charges ` -> add/clear, `/item_mod set ` -> enchant/explicit/...), enums
+(`/ascendancy ` -> normal/phrecia) and flags. `/kill ` shows `all`, `boss` and `near`
+before the monster list, and `/tp ` shows `list` before the areas.
+
 ## Requirements
 
 - LocalExile **0.5.2-beta** (or later, after it is checked against the release).

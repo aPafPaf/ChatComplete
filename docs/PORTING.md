@@ -263,6 +263,16 @@ the edit's setter notifies the text-change handler. Around a programmatic input 
 - `tools/export_args.py` builds all three from the gm-commands DLL usages and
   `data/client.db` (WorldAreas, MonsterVarieties, BaseItemTypes, SkillGems, Stats,
   NPCs, QuestFlags). Kinds match the Gateway's `CompletionValues`.
+- `%TEMP%\ChatComplete.states.txt`: `<command><TAB><prefix><TAB>next tokens`, where a
+  token is a literal or `@kind`. The mod parses each usage into these states; the DLL
+  picks the longest literal prefix and filters the partial token.
+- Framework kinds `mod`, `module` and `command` need `Program.CompletionValues` in the
+  Gateway and the kinds in the `Add` calls (`Program.Commands.cs`). The mod calls it by
+  reflection, so an older Gateway falls back to `GameLogicOrNull.CompletionValues` and
+  simply has no framework suggestions.
+- A command may declare a `CommandGrammar` (`ChatCommands.Grammar`): forms of
+  `Keyword`, `Keywords`, `Catalog`, `Number` and `Text`, with `Opt()`/`Repeat()`. The
+  mod converts it through `StateLines()`; parsing the usage remains the fallback.
 
 ## 6. Validation checklist after a port
 
