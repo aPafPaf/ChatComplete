@@ -11,55 +11,40 @@ input, with live preview, a yellow selection and Tab/Enter support.
 
 ## Features
 
-- Type `/` to list every command. Matching is case-insensitive on any part of the name;
-  prefix matches come first, and a fully typed command stays in the list (`/god`).
-- Command arguments complete from the server's own catalogs: monsters, items, gems,
-  areas, NPCs, quest flags and stats.
-- Contextual choices from each command's usage are offered in the right position:
-  subcommands (`/charges ` -> add/clear, `/item_mod set ` -> enchant/explicit/...),
-  enums (`/ascendancy ` -> normal/phrecia, `/hit ` -> fire/cold/...), flags
-  (`ranged`, `freeze`) and `/tp ` -> list plus areas. `/kill ` lists `all`, `boss`
-  and `near` before the monster catalog. Small numeric sets such as
-  `[created 0|1]` and `[type 1-4]` are offered too.
-- Framework catalogs where the Gateway provides them: `/mod_enable`, `/mod_disable`
-  and `/mod_reload` suggest installed mods, `/module_reload` suggests modules, and
-  `/commands ` suggests command names. On a released Gateway without these framework
-  kinds the mod still loads and those commands simply have no value suggestions.
-- If a Gateway provides a `CommandGrammar` for a command, the mod prefers it and falls
-  back to parsing the usage otherwise. This is optional; the stock Gateway needs no
-  change for this release.
-- `/ascendancy normal ` and `/ascendancy phrecia ` suggest the names available to the
-  character's class (from `client.db`'s `Ascendancy` table: normal uses `Name`, phrecia
-  uses `LeagueName`).
-- More static data from `client.db`: `/add_passive ` shows passive node names and inserts
-  `PassiveSkillGraphId`; `/atlas_complete ` shows map names and inserts `AtlasNode.Id`;
-  `/quest_preset ` lists `CharacterStartQuestState` ids; `/tattoo ` and `/tattoo_apply `
-  list tattoo item names; `/unique_jewel ` lists the Gateway's unique-jewel catalogue;
-  `/item_mod ` lists the item-domain `Mods` (Id, name), `/item_tab ` the standard stash
-  tab names, `/cluster_jewel ` the size's themes, `/mob_mods ` the monster affixes, and
-  `/mod_*` / `/module_reload ` the installed mods and modules.
-- Arguments after a value keep going: `/spawn_mob Sand Spitter ` offers
-  `friendly`, `normal`, `magic`, `rare`, `unique`; `/tattoo_apply <name> ` offers the
-  passive nodes; `/item Mageblood ` offers `magic`, `rare`, `max`; `/mob_mods 0x1 `
-  offers the monster affixes. The same works after numbers and flags:
-  `/hit fire 100 ` -> `ranged`/`freeze`, `/cluster_jewel large 8 2 ` -> the themes,
-  `/item Mageblood 1 ` -> `magic`/`rare`/`max`.
-- A state prefix may be `@kind` (an exact catalog value, possibly several words) or
-  `*` (one runtime word such as a monster id or a count). The custom monster name after
-  the rarity in `/spawn_mob` is arbitrary text: it is deliberately not a catalog.
-- Catalog entries show and search their detail: areas appear as
-  `The Twilight Strand (1_1_1)` and match a typed name, while other kinds search
-  their ids/tags as well as their values.
-- `*` lists everything, or acts as a wildcard inside a query (`spawn*maven`); a query
-  with regex metacharacters (`^`, `$`, `[]`, `|`, ...) is a case-insensitive regex.
-- Up/Down move through the whole match list (up to 4000 entries), scroll the 12-row
-  window and preview the row in the input. Holding the arrow works.
-- Tab accepts the selected row and puts the caret at the end. Enter sends the message
-  even while the list is open. Esc closes the list.
-- The window is sized to the matches: no empty or filler rows.
-- The catalog comes from the running server, so commands added by other mods appear
-  without editing any file. `/ccc` rewrites it; the DLL also re-reads changed files on
-  the next keystroke.
+### What it suggests
+
+- **Commands.** Type `/` to list every command. Search matches any part of the name;
+  `*` lists everything or acts as a wildcard (`spawn*maven`); a query with regex
+  metacharacters (`^`, `$`, `[]`, `|`, ...) is a case-insensitive regex.
+- **Server values.** Monsters, items, gems, areas, NPCs, quest flags and stats come from
+  the running Gateway, not a hand-written list.
+- **Context.** Subcommands, enums and flags appear in the right position:
+  `/charges `, `/item_mod set `, `/ascendancy `, `/hit `, `/cluster_jewel `.
+- **After a value.** `/spawn_mob Sand Spitter ` offers `friendly` and the four
+  rarities; `/tattoo_apply <name> ` offers the passive nodes; `/item Mageblood 1 `
+  offers `magic`, `rare` and `max`; `/mob_mods 0x1 ` offers the monster affixes.
+- **Static client data.** Passive nodes, Atlas maps, quest presets, tattoos, unique
+  jewels, item mods, standard stash tabs, cluster jewel themes and installed
+  mods/modules.
+- **Names, not opaque ids.** Areas show as `The Twilight Strand (1_1_1)`; passives,
+  mods and other entries show their human name while the id is what gets typed. Detail
+  is searchable too.
+
+### How it feels
+
+- **Native.** Real suggestion rows in the client's own chat, above the input: no
+  overlay, live preview, yellow selection, no empty or filler rows.
+- **Keyboard.** Up/Down move through the whole list and preview the row; holding an
+  arrow repeats. Tab accepts and puts the caret at the end. Enter sends even while the
+  list is open. Esc closes it.
+- **Sized to the result.** The window is as tall as the matches, up to 12 rows.
+
+### Freshness
+
+- Catalogs come from the live server and refresh on the first area or `/ccc`; the DLL
+  notices changed files on the next keystroke, so `/cc reload` is only a manual
+  fallback.
+- Commands added by other mods appear without editing a file.
 
 ## Install
 
@@ -74,7 +59,7 @@ https://github.com/aPafPaf/ChatComplete
 
 ### By hand
 
-Download `chatcomplete-0.2.0.zip` from the repository's releases and extract it into
+Download `chatcomplete-0.3.0.zip` from the repository's releases and extract it into
 `Mods/Binaries/chatcomplete/`, so that the folder holds:
 
 ```
@@ -140,6 +125,10 @@ Client (NativeSuggest.dll)
 - The DLL resolves its function addresses from byte signatures at load
   (`native/Signatures.generated.h`), so a client build change usually needs only new
   signatures, not source edits.
+
+A Gateway may declare a `CommandGrammar` for a command; when it does, the mod uses that
+declaration instead of parsing the command's usage. This is optional: the stock Gateway
+needs no change, and the release works entirely from usage parsing.
 
 ## Build from source
 
