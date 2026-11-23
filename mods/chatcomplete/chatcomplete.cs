@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -42,6 +43,7 @@ public sealed class ChatComplete : IMod, IDisposable
     IModContext _mod = null!;
     Settings _settings = null!;
     Timer? _timer;
+    readonly List<IDisposable> _events = [];
     readonly Dictionary<int, DateTime> _injected = [];
     readonly HashSet<int> _failed = [];
     bool _missingLogged;
@@ -61,6 +63,14 @@ public sealed class ChatComplete : IMod, IDisposable
     readonly object _catalogGate = new();
     readonly HashSet<string> _knownCommands = new(StringComparer.OrdinalIgnoreCase);
     readonly HashSet<string> _knownArgs = new(StringComparer.OrdinalIgnoreCase);
+    // /entity's catalog is per connection: its monsters spawn and die between area changes (/spawn_mob, a boss's own
+    // summons), so a cheap signature of the list is checked on the tick and the catalog written when it moves.
+    sealed class EntityCatalog { public double Checked; public long Signature = long.MinValue; public bool HadActions; }
+    readonly ConditionalWeakTable<Player, EntityCatalog> _entityCatalogs = new();
+    // The entity catalogs are written by one background task: a spawn must not do file I/O on the tick.
+    readonly object _entityWriteGate = new();
+    List<(string Path, string Text, int Count)>? _entityPending;
+    bool _entityWriting;
     string? _valuesStamp;
 
     public void Load(IModContext mod)
@@ -81,17 +91,22 @@ public sealed class ChatComplete : IMod, IDisposable
 
         // M2: the live command table of a connection contains the commands of every
         // loaded module and mod; write it where NativeSuggest.dll reads it.
-        GameEvents.AreaGenerated.Add(mod.Manifest.Id, conn =>
+        _events.Add(GameEvents.AreaGenerated.Add(mod.Manifest.Id, conn =>
         {
             DumpCatalog(conn, force: false);
             return Task.CompletedTask;
-        });
-        GameEvents.Command(mod.Manifest.Id, "ccc", "/ccc (rewrite the ChatComplete catalogs)",
+        }));
+        _events.Add(GameEvents.Command(mod.Manifest.Id, "ccc", "/ccc (rewrite the ChatComplete catalogs)",
             async (conn, args) =>
             {
                 DumpCatalog(conn, force: true);
                 await conn.Commands!.Reply("ChatComplete catalogs written.");
-            });
+            }));
+        _events.Add(GameEvents.AreaTick.Add(mod.Manifest.Id, GameEvents.Always(async (conn, _) =>
+        {
+            RefreshEntityCatalog(conn);
+            await Task.CompletedTask;
+        })));
     }
 
     void Tick(string dll)
@@ -141,7 +156,7 @@ public sealed class ChatComplete : IMod, IDisposable
         }
     }
 
-    void DumpCatalog(ClientState conn, bool force)
+    void DumpCatalog(Player conn, bool force)
     {
         List<(string Name, string Usage, string[] Arguments)> usages;
         try { usages = conn.Commands?.Usages.ToList() ?? []; }
@@ -169,6 +184,9 @@ public sealed class ChatComplete : IMod, IDisposable
             if (commands || args)
                 _mod.Log($"catalog: {_knownCommands.Count} commands, {_knownArgs.Count} with args");
             DumpValues(conn, folder, force);
+            // /entity's ids belong to this area and change with it, so they are written every time, not with the stamped
+            // catalogs.
+            if (_knownCommands.Contains("entity")) QueueEntityCatalog(conn, folder);
             WriteIfChanged(Path.Combine(folder, "ChatComplete.usage.txt"),
                 usages.OrderBy(u => u.Name, StringComparer.OrdinalIgnoreCase)
                     .Select(u => $"{u.Name}\t{u.Usage}"));
@@ -309,14 +327,14 @@ public sealed class ChatComplete : IMod, IDisposable
         UniqueJewelCatalogue.Names.Select(name => (name, ""));
 
     // client.db's Ascendancy rows carry both families: Name is normal, LeagueName is
-    // phrecia; Character is the Characters row (conn.ClassRow).
-    static IEnumerable<(string Value, string Detail)> AscendancyValues(ClientState conn, string kind)
+    // phrecia; Character is the Characters row (conn.Character.ClassRow).
+    static IEnumerable<(string Value, string Detail)> AscendancyValues(Player conn, string kind)
     {
         var table = GameServer.Core.ClientTables.TableOrNull("Ascendancy");
         if (table is null) yield break;
         foreach (var row in table)
         {
-            if (row.Int("Character") != conn.ClassRow) continue;
+            if (row.Int("Character") != conn.Character.ClassRow) continue;
             string? value = kind == "ascendancy_phrecia" ? row.Text("LeagueName") : row.Text("Name");
             if (string.IsNullOrWhiteSpace(value)) continue;
             yield return (value, row.Text("Id") ?? "");
@@ -325,7 +343,7 @@ public sealed class ChatComplete : IMod, IDisposable
 
     // A command's declared CommandGrammar (new LocalExile) wins over parsing its usage.
     // Reflection keeps the mod loading on a released Gateway without the type.
-    static IEnumerable<string>? GrammarStateLines(ClientState conn, string name)
+    static IEnumerable<string>? GrammarStateLines(Player conn, string name)
     {
         try
         {
@@ -360,7 +378,7 @@ public sealed class ChatComplete : IMod, IDisposable
 
     // %TEMP%\ChatComplete.kind.<kind>.txt: "value<TAB>detail" per line, from the game
     // module itself (Program.GameLogicOrNull.CompletionValues) instead of client.db.
-    void DumpValues(ClientState conn, string folder, bool force)
+    void DumpValues(Player conn, string folder, bool force)
     {
         var kinds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (string line in _knownArgs)
@@ -392,7 +410,7 @@ public sealed class ChatComplete : IMod, IDisposable
         if (_knownCommands.Contains("module_reload")) kinds.Add("installed_module");
         if (kinds.Count == 0) return;
 
-        string stamp = $"{GameServer.Core.ClientTables.Written.Ticks}:" +
+        string stamp = $"{File.GetLastWriteTimeUtc(GameServer.Core.ClientTables.DefaultPath).Ticks}:" +
                        $"{Program.GameLogicOrNull?.GetType().Assembly.ManifestModule.ModuleVersionId}";
         if (!force && stamp == _valuesStamp) return;
 
@@ -442,9 +460,111 @@ public sealed class ChatComplete : IMod, IDisposable
         if (written > 0) _mod.Log($"catalog values: {written} kind(s), {total} entries");
     }
 
-    static bool WriteIfChanged(string path, IEnumerable<string> lines)
+    // A spawned or dead monster changes /entity's ids before the next area: rewrite the catalog at most twice a second,
+    // and only when the living set moved.
+    void RefreshEntityCatalog(Player conn)
     {
-        string text = string.Join("\n", lines) + "\n";
+        if (!_knownCommands.Contains("entity")) return;
+        var state = _entityCatalogs.GetOrCreateValue(conn);
+        double now = conn.Clock.Elapsed.TotalSeconds;
+        if (now - state.Checked < 0.5) return;
+        state.Checked = now;
+        long signature = 0;
+        bool hasActions = false;
+        lock (conn.Area.Monsters)
+            foreach (var (id, monster) in conn.Area.Monsters)
+            {
+                signature ^= (long)id * 2654435761L ^ (monster.Life > 0 ? 1 : 0);
+                // A scripted fight is created a tick after its boss, so its skill names can appear with no monster change.
+                if (monster.Life > 0 && MonsterActions.Names(conn, id) is { Count: > 0 }) hasActions = true;
+            }
+        bool appeared = hasActions && !state.HadActions;
+        state.HadActions = hasActions;
+        if (signature == state.Signature && !appeared) return;
+        state.Signature = signature;
+        QueueEntityCatalog(conn, Path.GetTempPath());
+    }
+
+    // /entity <id>: the area's living monsters, id to label, for ChatComplete.kind.entity, and the actor's own skill names
+    // for ChatComplete.kind.entity_skill. The snapshot is taken here (cheap, under the monster lock); the file writes
+    // happen on one background task.
+    void QueueEntityCatalog(Player conn, string folder)
+    {
+        var entities = new List<string>();
+        var skills = new List<string>();
+        var files = new List<(string Path, string Text, int Count)>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        lock (conn.Area.Monsters)
+            foreach (var (id, monster) in conn.Area.Monsters)
+            {
+                if (monster.Life <= 0) continue;
+                string metadata = monster.Variety?.Id ?? "";
+                string name = monster.Variety?.Name ?? monster.Label;
+                entities.Add($"0x{id:x}\t{(int)id}  {metadata}  {name}".TrimEnd());
+                if (MonsterActions.Names(conn, id) is not { Count: > 0 } actions) continue;
+                // One catalog per entity: /entity <id> skill offers only that actor's skills. The shared one below keeps
+                // the no-id form working.
+                var specific = new List<string>();
+                foreach (string action in actions)
+                {
+                    string row = $"{action}\t{name}";
+                    specific.Add(row);
+                    if (seen.Add(action)) skills.Add(row);
+                }
+                files.Add((Path.Combine(folder, $"ChatComplete.kind.entity_skill.0x{id:x}.txt"),
+                    string.Join('\n', specific) + "\n", specific.Count));
+            }
+        entities.Sort(StringComparer.OrdinalIgnoreCase);
+        skills.Sort(StringComparer.OrdinalIgnoreCase);
+        var pending = new List<(string Path, string Text, int Count)>(files)
+        {
+            (Path.Combine(folder, "ChatComplete.kind.entity.txt"), string.Join('\n', entities) + "\n", entities.Count),
+            (Path.Combine(folder, "ChatComplete.kind.entity_skill.txt"), string.Join('\n', skills) + "\n", skills.Count),
+        };
+        lock (_entityWriteGate)
+        {
+            _entityPending = pending;
+            if (_entityWriting) return;
+            _entityWriting = true;
+        }
+        _ = Task.Run(WriteEntityCatalog);
+    }
+
+    void WriteEntityCatalog()
+    {
+        while (true)
+        {
+            List<(string Path, string Text, int Count)> next;
+            lock (_entityWriteGate)
+            {
+                if (_entityPending is not { } pending)
+                {
+                    _entityWriting = false;
+                    return;
+                }
+                next = pending;
+                _entityPending = null;
+            }
+            foreach (var (path, text, count) in next)
+            {
+                try
+                {
+                    if (WriteIfChanged(path, text))
+                        _mod.Log($"catalog values: {Path.GetFileName(path)} {count} entries");
+                }
+                catch (Exception ex)
+                {
+                    try { _mod.Log("catalog entity: " + ex.Message); } catch (Exception) { }
+                }
+            }
+        }
+    }
+
+    static bool WriteIfChanged(string path, IEnumerable<string> lines) =>
+        WriteIfChanged(path, string.Join("\n", lines) + "\n");
+
+    static bool WriteIfChanged(string path, string text)
+    {
         try { if (File.Exists(path) && File.ReadAllText(path) == text) return false; }
         catch (IOException) { }
         string temp = path + ".tmp";
@@ -494,5 +614,8 @@ public sealed class ChatComplete : IMod, IDisposable
     {
         _timer?.Dispose();
         _timer = null;
+        lock (_entityWriteGate) _entityPending = null;
+        foreach (var e in _events) e.Dispose();
+        _events.Clear();
     }
 }

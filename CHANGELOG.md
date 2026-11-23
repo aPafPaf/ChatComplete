@@ -2,6 +2,18 @@
 
 All dates are 2026-11-21 unless noted. Client build: 3.29.3c.
 
+## 0.4.0 - 2026-11-23
+
+### Added
+- `/entity` catalogs: the ids of the area's living monsters (`ChatComplete.kind.entity`) and each actor's own skill names
+  (`entity_skill`), refreshed on the area tick; after `/entity <id>` the verbs are suggested, including `kill`.
+
+### Changed
+- Ported to the 0.6.0 LocalExile API: `Player` (was `ClientState`), `GameEvents.AreaTick`, `player.Area.Monsters`,
+  `player.Character.ClassRow`, and the Game module's `MonsterActions.Names` (LocalExile#1354).
+- `UsageGrammar`: the `/entity` verb list is `skills|skill|kill|life|anim|list` (the removed `auto` is gone).
+- Needs the LocalExile change in LocalExile#1354 (`MonsterActions`); a stock release without it cannot load this version.
+
 ## NativeSuggest — current
 
 ### Added

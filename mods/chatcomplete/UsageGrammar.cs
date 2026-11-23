@@ -81,6 +81,9 @@ public static class UsageGrammar
         ["mod_disable"] = [("", "@installed_mod")],
         ["mod_reload"] = [("", "@installed_mod")],
         ["module_reload"] = [("", "@installed_module")],
+        // The scripted boss fights' own skills (gm-commands' /entity): the actor's GrantedEffects Ids, from the kinds the
+        // mod writes per area, so no name is repeated here.
+        ["entity"] = [("skill", "@entity_skill")],
         ["item_mod"] =
         [
             ("", "@item_mod"),
@@ -112,6 +115,13 @@ public static class UsageGrammar
         ["tattoo_apply"] = [("@tattoo", "@passive")],
         ["mob_mods"] = [("*", "@monster_mod")],
         ["hit"] = [("* *", "ranged|freeze")],
+        // The entity id comes from this area (ChatComplete writes the kind from the connection's monsters), then the
+        // verb, then a scripted boss's own skill names.
+        ["entity"] =
+        [
+            ("@entity", "skills|skill|kill|life|anim|list"),
+            ("@entity skill", "@entity_skill"),
+        ],
     };
 
     public static (int Commands, int States) Write(
