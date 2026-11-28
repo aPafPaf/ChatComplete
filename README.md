@@ -5,7 +5,7 @@ client chat. No overlay: the rows are the client's own suggestion rows, drawn ab
 input, with live preview, a yellow selection and Tab/Enter support.
 
 - Client: **3.29.3c** (Windows)
-- LocalExile: **0.6.0-beta**
+- LocalExile: **0.6.1-beta**
 - DLL: `NativeSuggest.dll`, built from `native/`
 - Mod: `mods/chatcomplete/` (a LocalExile script mod)
 

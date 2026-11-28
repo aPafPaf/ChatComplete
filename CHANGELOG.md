@@ -10,10 +10,11 @@ All dates are 2026-11-21 unless noted. Client build: 3.29.3c.
   The DLL prefers the per-actor `entity_skill.0x<id>` catalog, so `/entity <id> skill ` lists that actor's skills only.
 
 ### Changed
-- Ported to the 0.6.0 LocalExile API: `Player` (was `ClientState`), `GameEvents.AreaTick`, `player.Area.Monsters`,
+- Ported to the 0.6.x LocalExile API: `Player` (was `ClientState`), `GameEvents.AreaTick`, `player.Area.Monsters`,
   `player.Character.ClassRow`, and the Game module's `MonsterActions.Names` (LocalExile#1354).
 - `UsageGrammar`: the `/entity` verb list is `skills|skill|kill|life|anim|list` (the removed `auto` is gone).
-- Needs the LocalExile change in LocalExile#1354 (`MonsterActions`); a stock release without it cannot load this version.
+- Requires LocalExile **0.6.1-beta**: LocalExile#1354 (`MonsterActions`) shipped there, not in 0.6.0-beta;
+  a stock 0.6.0-beta cannot load this version.
 
 ## NativeSuggest — current
 

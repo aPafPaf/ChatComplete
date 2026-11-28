@@ -26,7 +26,7 @@ before the monster list, and `/tp ` shows `list` before the areas.
 
 ## Requirements
 
-- LocalExile **0.6.0-beta** (or later, after it is checked against the release).
+- LocalExile **0.6.1-beta** (or later, after it is checked against the release).
 - Windows. The mod injects a native DLL into the local client; it does not work on the
   Linux build of LocalExile.
 - Client **3.29.3c** (the build this DLL was tested with; signatures are resolved at

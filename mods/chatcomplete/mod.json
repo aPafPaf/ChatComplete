@@ -4,7 +4,7 @@
   "description": "Native command and argument suggestions in the LocalExile client's chat.",
   "author": "Amnyam",
   "version": "0.4.0",
-  "compatibleClientVersions": ["0.6.0-beta"],
+  "compatibleClientVersions": ["0.6.1-beta"],
   "kind": "feature",
   "depends": ["Game"],
   "enabled": false
