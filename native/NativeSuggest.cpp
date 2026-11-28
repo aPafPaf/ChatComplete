@@ -473,14 +473,18 @@ std::wstring StripMetadata(const std::wstring& id) {
 }
 
 constexpr size_t kDisplayWidth = 64;
+constexpr size_t kEntityDisplayWidth = 120;
 
-std::wstring DisplayText(const std::wstring& value) {
-    std::wstring d = StripMetadata(value);
-    if (d.size() > kDisplayWidth) {
-        d.resize(kDisplayWidth - 1);
+std::wstring Truncate(std::wstring d, size_t width) {
+    if (d.size() > width) {
+        d.resize(width - 1);
         d.push_back(L'\x2026');
     }
     return d;
+}
+
+std::wstring DisplayText(const std::wstring& value) {
+    return Truncate(StripMetadata(value), kDisplayWidth);
 }
 
 // Case-insensitive '*' wildcard: every '*' matches any run of characters.
@@ -620,7 +624,12 @@ void LoadKindCatalog(const std::wstring& kind) {
         if (kind != L"command" && kind != L"mod" && kind != L"module")
             e.detailLower = ToLowerW(wdetail);
         bool clusterTheme = kind.rfind(L"cluster_theme", 0) == 0;
-        if ((kind == L"area" || kind == L"passive" || kind == L"atlas" || kind == L"item_mod" ||
+        if (kind == L"entity" && !wdetail.empty()) {
+            // /entity inserts only the id; the row shows what it is: (int) id, metadata, render name.
+            std::wstring text = e.value + L"  " + wdetail;
+            e.display = Truncate(text, kEntityDisplayWidth);
+            e.displayLower = ToLowerW(text);
+        } else if ((kind == L"area" || kind == L"passive" || kind == L"atlas" || kind == L"item_mod" ||
              clusterTheme) && !wdetail.empty()) {
             // These kinds show "Name (id)"; the id is inserted, and the name is searchable.
             std::wstring name = wdetail;
@@ -1011,7 +1020,15 @@ void Populate(void* chat) {
                                     pos = sp + 1;
                                 }
                                 if (!prefixOriginal.empty()) query = query.substr(std::min(pos, query.size()));
-                                AddKindMatches(matches, token.substr(1), base, query);
+                                std::wstring kind = token.substr(1);
+                                // A per-value catalog: /entity <id> skill lists that actor's skills only. The mod writes
+                                // ChatComplete.kind.entity_skill.<id>.txt; without one the shared catalog is used.
+                                if (state.prefix.size() >= 2 && state.prefix[0] == L"@entity" && !prefixOriginal.empty()) {
+                                    std::wstring specific = kind + L"." + ToLowerW(prefixOriginal[0]);
+                                    std::ifstream probe(KindPath(specific));
+                                    if (probe) kind = specific;
+                                }
+                                AddKindMatches(matches, kind, base, query);
                             } else if (TextMatches(ToLowerW(token), qLower, rePtr, wildcard)) {
                                 matches.push_back({base + token, DisplayText(token)});
                                 if (matches.size() >= kMaxMatches) break;
