@@ -2,6 +2,12 @@
 
 All dates are 2026-11-21 unless noted. Client build: 3.29.3c.
 
+## 0.4.1 - 2026-11-28
+
+### Fixed
+- The release declares LocalExile **0.6.1-beta** as its minimum. 0.4.0 said 0.6.0-beta, but the `/entity`
+  code needs LocalExile#1354 (`MonsterActions`), which shipped in 0.6.1-beta.
+
 ## 0.4.0 - 2026-11-28
 
 ### Added
@@ -13,8 +19,7 @@ All dates are 2026-11-21 unless noted. Client build: 3.29.3c.
 - Ported to the 0.6.x LocalExile API: `Player` (was `ClientState`), `GameEvents.AreaTick`, `player.Area.Monsters`,
   `player.Character.ClassRow`, and the Game module's `MonsterActions.Names` (LocalExile#1354).
 - `UsageGrammar`: the `/entity` verb list is `skills|skill|kill|life|anim|list` (the removed `auto` is gone).
-- Requires LocalExile **0.6.1-beta**: LocalExile#1354 (`MonsterActions`) shipped there, not in 0.6.0-beta;
-  a stock 0.6.0-beta cannot load this version.
+- Needs LocalExile#1354 (`MonsterActions`), shipped in 0.6.1-beta; a stock 0.6.0-beta cannot load this version.
 
 ## NativeSuggest — current
 

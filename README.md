@@ -62,7 +62,7 @@ https://github.com/aPafPaf/ChatComplete
 
 ### By hand
 
-Download `chatcomplete-0.4.0.zip` from the repository's releases and extract it into
+Download `chatcomplete-0.4.1.zip` from the repository's releases and extract it into
 `Mods/Binaries/chatcomplete/`, so that the folder holds:
 
 ```

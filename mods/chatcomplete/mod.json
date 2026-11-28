@@ -3,7 +3,7 @@
   "name": "ChatComplete",
   "description": "Native command and argument suggestions in the LocalExile client's chat.",
   "author": "Amnyam",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "compatibleClientVersions": ["0.6.1-beta"],
   "kind": "feature",
   "depends": ["Game"],
