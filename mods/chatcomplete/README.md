@@ -11,6 +11,8 @@ Type `/` to list commands, or part of a command and its arguments:
 - `/npc`, `/npc_place`, `/npc_face` - NPCs
 - `/quest_flag` - quest flags
 - `/stat`, `/set_stat` - stats
+- `/entity` - the area's living monsters; `/entity <id> skill ` shows that actor's
+  own skills
 
 Search is case-insensitive on any part of the name, `*` is a wildcard (or lists
 everything), and a query with regex metacharacters is a regular expression. Up/Down
@@ -24,7 +26,7 @@ before the monster list, and `/tp ` shows `list` before the areas.
 
 ## Requirements
 
-- LocalExile **0.5.2-beta** (or later, after it is checked against the release).
+- LocalExile **0.6.0-beta** (or later, after it is checked against the release).
 - Windows. The mod injects a native DLL into the local client; it does not work on the
   Linux build of LocalExile.
 - Client **3.29.3c** (the build this DLL was tested with; signatures are resolved at

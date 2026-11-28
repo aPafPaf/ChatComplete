@@ -260,6 +260,9 @@ the edit's setter notifies the text-change handler. Around a programmatic input 
 - `%TEMP%\ChatComplete.commands.txt`: command names.
 - `%TEMP%\ChatComplete.args.txt`: `<command> <kind>[,<kind>...]` by position.
 - `%TEMP%\ChatComplete.kind.<kind>.txt`: `value<TAB>detail`.
+- `%TEMP%\ChatComplete.kind.entity_skill.0x<id>.txt`: the same format, one file per
+  living actor; after `/entity <id> skill ` the DLL prefers it over the shared
+  `entity_skill` catalog, so only that actor's skills are shown.
 - `tools/export_args.py` builds all three from the gm-commands DLL usages and
   `data/client.db` (WorldAreas, MonsterVarieties, BaseItemTypes, SkillGems, Stats,
   NPCs, QuestFlags). Kinds match the Gateway's `CompletionValues`.

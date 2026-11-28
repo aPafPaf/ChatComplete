@@ -5,7 +5,7 @@ client chat. No overlay: the rows are the client's own suggestion rows, drawn ab
 input, with live preview, a yellow selection and Tab/Enter support.
 
 - Client: **3.29.3c** (Windows)
-- LocalExile: **0.5.2-beta**
+- LocalExile: **0.6.0-beta**
 - DLL: `NativeSuggest.dll`, built from `native/`
 - Mod: `mods/chatcomplete/` (a LocalExile script mod)
 
@@ -23,6 +23,9 @@ input, with live preview, a yellow selection and Tab/Enter support.
 - **After a value.** `/spawn_mob Sand Spitter ` offers `friendly` and the four
   rarities; `/tattoo_apply <name> ` offers the passive nodes; `/item Mageblood 1 `
   offers `magic`, `rare` and `max`; `/mob_mods 0x1 ` offers the monster affixes.
+- **Monsters by id.** `/entity ` lists the area's living monsters, `/entity <id> `
+  offers its verbs (including `kill`), and `/entity <id> skill ` offers that actor's
+  own skills only.
 - **Static client data.** Passive nodes, Atlas maps, quest presets, tattoos, unique
   jewels, item mods, standard stash tabs, cluster jewel themes and installed
   mods/modules.
@@ -59,7 +62,7 @@ https://github.com/aPafPaf/ChatComplete
 
 ### By hand
 
-Download `chatcomplete-0.3.0.zip` from the repository's releases and extract it into
+Download `chatcomplete-0.4.0.zip` from the repository's releases and extract it into
 `Mods/Binaries/chatcomplete/`, so that the folder holds:
 
 ```
@@ -95,9 +98,10 @@ until the client exits.
 | `/cc reload` | client command: re-read the catalog files now (never reaches the server) |
 
 Value catalogs come from the Gateway's `CompletionValues` (`area`, `monster`, `item`,
-`gem`, `stat`, `npc`, `quest_flag`). Finite keyword choices are parsed from the command's
-usage string into `ChatComplete.states.txt`; free text, large numeric ranges, dates and
-paths are not enumerated.
+`gem`, `stat`, `npc`, `quest_flag`). `/entity` is written by the mod from the gm-commands
+`MonsterActions` API, one skill catalog per living actor. Finite keyword choices are
+parsed from the command's usage string into `ChatComplete.states.txt`; free text, large
+numeric ranges, dates and paths are not enumerated.
 
 ## How it works
 

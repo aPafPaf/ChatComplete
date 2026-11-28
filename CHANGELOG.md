@@ -2,11 +2,12 @@
 
 All dates are 2026-11-21 unless noted. Client build: 3.29.3c.
 
-## 0.4.0 - 2026-11-23
+## 0.4.0 - 2026-11-28
 
 ### Added
 - `/entity` catalogs: the ids of the area's living monsters (`ChatComplete.kind.entity`) and each actor's own skill names
   (`entity_skill`), refreshed on the area tick; after `/entity <id>` the verbs are suggested, including `kill`.
+  The DLL prefers the per-actor `entity_skill.0x<id>` catalog, so `/entity <id> skill ` lists that actor's skills only.
 
 ### Changed
 - Ported to the 0.6.0 LocalExile API: `Player` (was `ClientState`), `GameEvents.AreaTick`, `player.Area.Monsters`,
